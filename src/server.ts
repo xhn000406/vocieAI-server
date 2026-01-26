@@ -63,8 +63,8 @@ app.use(errorHandler);
 async function startServer() {
   try {
     // 连接数据库
-    await connectMySQL();
-    await connectRedis();
+    // await connectMySQL();
+    // await connectRedis();
 
     httpServer.listen(PORT, () => {
       logger.info(`🚀 服务器运行在端口 ${PORT}`);

@@ -124,3 +124,8 @@
 {"level":"info","message":"✅ Redis 连接成功","service":"biji-backend","timestamp":"2026-01-26 21:29:54"}
 {"level":"info","message":"🚀 服务器运行在端口 3000","service":"biji-backend","timestamp":"2026-01-26 21:29:54"}
 {"level":"info","message":"📱 环境: development","service":"biji-backend","timestamp":"2026-01-26 21:29:54"}
+{"database":"voice_ai","host":"localhost","level":"info","message":"🔌 正在连接 MySQL:","port":3306,"service":"biji-backend","timestamp":"2026-01-26 23:36:52","user":"root"}
+{"code":"ECONNREFUSED","fatal":true,"level":"error","message":"❌ MySQL 连接失败:","service":"biji-backend","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1134:18)\n    at afterConnectMultiple (node:net:1715:7)","timestamp":"2026-01-26 23:36:52"}
+{"code":"ECONNREFUSED","fatal":true,"level":"error","message":"启动服务器失败:","service":"biji-backend","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1134:18)\n    at afterConnectMultiple (node:net:1715:7)","timestamp":"2026-01-26 23:36:52"}
+{"level":"info","message":"🚀 服务器运行在端口 3000","service":"biji-backend","timestamp":"2026-01-26 23:37:13"}
+{"level":"info","message":"📱 环境: development","service":"biji-backend","timestamp":"2026-01-26 23:37:13"}
