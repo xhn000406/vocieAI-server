@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -13,6 +7,325 @@ datasource db {
   provider = "mysql"
 }
 
-model demo {
-  id    Int     @id @default(autoincrement())
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model files {
+  id            Int                @id @default(autoincrement())
+  user_id       Int
+  meeting_id    Int?
+  filename      String             @db.VarChar(255)
+  original_name String             @db.VarChar(255)
+  mime_type     String             @db.VarChar(100)
+  size          BigInt
+  url           String             @db.VarChar(500)
+  storage_type  files_storage_type
+  storage_key   String             @db.VarChar(500)
+  is_public     Boolean            @default(false)
+  created_at    DateTime           @default(now()) @db.DateTime(0)
+
+  @@index([created_at], map: "idx_created_at")
+  @@index([meeting_id], map: "idx_meeting_id")
+  @@index([storage_key], map: "idx_storage_key")
+  @@index([user_id], map: "idx_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model meeting_participants {
+  id         Int      @id @default(autoincrement())
+  meeting_id Int
+  user_id    Int?
+  name       String   @db.VarChar(100)
+  role       String?  @db.VarChar(50)
+  email      String?  @db.VarChar(255)
+  phone      String?  @db.VarChar(20)
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  @@index([meeting_id], map: "idx_meeting_id")
+  @@index([name], map: "idx_name")
+  @@index([user_id], map: "idx_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model meeting_speakers {
+  id         Int      @id @default(autoincrement())
+  meeting_id Int
+  speaker_id String   @db.VarChar(50)
+  name       String   @db.VarChar(100)
+  color      String?  @db.VarChar(20)
+  avatar     String?  @db.VarChar(500)
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([meeting_id, speaker_id], map: "uk_meeting_speaker")
+  @@index([meeting_id], map: "idx_meeting_id")
+  @@index([speaker_id], map: "idx_speaker_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model meeting_summaries {
+  id           Int      @id @default(autoincrement())
+  meeting_id   Int      @unique(map: "meeting_id")
+  summary_text String?  @db.Text
+  created_at   DateTime @default(now()) @db.DateTime(0)
+  updated_at   DateTime @default(now()) @db.DateTime(0)
+
+  @@index([meeting_id], map: "idx_meeting_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model meeting_tags {
+  id         Int      @id @default(autoincrement())
+  meeting_id Int
+  tag_id     Int
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([meeting_id, tag_id], map: "uk_meeting_tag")
+  @@index([meeting_id], map: "idx_meeting_id")
+  @@index([tag_id], map: "idx_tag_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model meetings {
+  id          Int             @id @default(autoincrement())
+  user_id     Int
+  title       String          @db.VarChar(200)
+  description String?         @db.Text
+  duration    Int             @default(0)
+  start_time  DateTime        @db.DateTime(0)
+  end_time    DateTime?       @db.DateTime(0)
+  audio_url   String?         @db.VarChar(500)
+  audio_size  BigInt?
+  status      meetings_status @default(completed)
+  is_archived Boolean         @default(false)
+  is_shared   Boolean         @default(false)
+  share_token String?         @unique(map: "share_token") @db.VarChar(100)
+  created_at  DateTime        @default(now()) @db.DateTime(0)
+  updated_at  DateTime        @default(now()) @db.DateTime(0)
+
+  @@index([created_at], map: "idx_created_at")
+  @@index([is_archived], map: "idx_is_archived")
+  @@index([share_token], map: "idx_share_token")
+  @@index([start_time], map: "idx_start_time")
+  @@index([status], map: "idx_status")
+  @@index([user_id], map: "idx_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model shares {
+  id           Int       @id @default(autoincrement())
+  meeting_id   Int
+  user_id      Int
+  token        String    @unique(map: "token") @db.VarChar(100)
+  password     String?   @db.VarChar(255)
+  expires_at   DateTime? @db.DateTime(0)
+  access_count Int       @default(0)
+  is_active    Boolean   @default(true)
+  created_at   DateTime  @default(now()) @db.DateTime(0)
+
+  @@index([expires_at], map: "idx_expires_at")
+  @@index([is_active], map: "idx_is_active")
+  @@index([meeting_id], map: "idx_meeting_id")
+  @@index([token], map: "idx_token")
+  @@index([user_id], map: "idx_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model summary_snapshots {
+  id                Int                             @id @default(autoincrement())
+  meeting_id        Int
+  snapshot_type     summary_snapshots_snapshot_type
+  summary_text      String?                         @db.Text
+  transcript_count  Int
+  transcript_length Int
+  created_at        DateTime                        @default(now()) @db.DateTime(0)
+
+  @@index([created_at], map: "idx_created_at")
+  @@index([meeting_id], map: "idx_meeting_id")
+  @@index([snapshot_type], map: "idx_snapshot_type")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tags {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  name        String   @db.VarChar(50)
+  color       String   @default("#6366f1") @db.VarChar(20)
+  icon        String?  @db.VarChar(50)
+  usage_count Int      @default(0)
+  created_at  DateTime @default(now()) @db.DateTime(0)
+  updated_at  DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([user_id, name], map: "uk_user_tag")
+  @@index([usage_count], map: "idx_usage_count")
+  @@index([user_id], map: "idx_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model todo_tags {
+  id         Int      @id @default(autoincrement())
+  todo_id    Int
+  tag_id     Int
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([todo_id, tag_id], map: "uk_todo_tag")
+  @@index([tag_id], map: "idx_tag_id")
+  @@index([todo_id], map: "idx_todo_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model todos {
+  id           Int            @id @default(autoincrement())
+  user_id      Int
+  meeting_id   Int?
+  title        String         @db.VarChar(200)
+  description  String?        @db.Text
+  status       todos_status   @default(pending)
+  priority     todos_priority @default(medium)
+  due_date     DateTime?      @db.DateTime(0)
+  completed_at DateTime?      @db.DateTime(0)
+  assignee_id  Int?
+  reminder_at  DateTime?      @db.DateTime(0)
+  is_archived  Boolean        @default(false)
+  created_at   DateTime       @default(now()) @db.DateTime(0)
+  updated_at   DateTime       @default(now()) @db.DateTime(0)
+
+  @@index([assignee_id], map: "idx_assignee_id")
+  @@index([completed_at], map: "idx_completed_at")
+  @@index([created_at], map: "idx_created_at")
+  @@index([due_date], map: "idx_due_date")
+  @@index([is_archived], map: "idx_is_archived")
+  @@index([meeting_id], map: "idx_meeting_id")
+  @@index([priority], map: "idx_priority")
+  @@index([status], map: "idx_status")
+  @@index([user_id], map: "idx_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model transcripts {
+  id             BigInt   @id @default(autoincrement())
+  meeting_id     Int
+  text           String   @db.Text
+  timestamp      Int
+  speaker_id     String?  @db.VarChar(50)
+  speaker_name   String?  @db.VarChar(100)
+  is_highlighted Boolean  @default(false)
+  confidence     Decimal? @db.Decimal(5, 2)
+  created_at     DateTime @default(now()) @db.DateTime(0)
+
+  @@index([created_at], map: "idx_created_at")
+  @@index([meeting_id, is_highlighted], map: "idx_meeting_highlighted")
+  @@index([meeting_id, speaker_id], map: "idx_meeting_speaker")
+  @@index([meeting_id, timestamp], map: "idx_meeting_timestamp")
+  @@index([speaker_id], map: "idx_speaker_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model transcripts_archive {
+  id             BigInt
+  meeting_id     Int
+  text           String   @db.Text
+  timestamp      Int
+  speaker_id     String?  @db.VarChar(50)
+  speaker_name   String?  @db.VarChar(100)
+  is_highlighted Boolean  @default(false)
+  confidence     Decimal? @db.Decimal(5, 2)
+  created_at     DateTime @db.DateTime(0)
+  archived_at    DateTime @default(now()) @db.DateTime(0)
+
+  @@id([id, archived_at])
+  @@index([created_at], map: "idx_created_at")
+  @@index([meeting_id, timestamp], map: "idx_meeting_timestamp")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model user_oauth {
+  id               Int                 @id @default(autoincrement())
+  user_id          Int
+  provider         user_oauth_provider
+  provider_user_id String              @db.VarChar(255)
+  provider_email   String?             @db.VarChar(255)
+  access_token     String?             @db.VarChar(500)
+  refresh_token    String?             @db.VarChar(500)
+  expires_at       DateTime?           @db.DateTime(0)
+  extra_data       String?             @db.Text
+  created_at       DateTime            @default(now()) @db.DateTime(0)
+  updated_at       DateTime            @default(now()) @db.DateTime(0)
+
+  @@unique([provider, provider_user_id], map: "uk_provider_user")
+  @@unique([user_id, provider], map: "uk_user_provider")
+  @@index([provider, provider_user_id], map: "idx_provider_user_id")
+  @@index([user_id], map: "idx_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model user_settings {
+  id            Int      @id @default(autoincrement())
+  user_id       Int
+  setting_key   String   @db.VarChar(100)
+  setting_value String?  @db.Text
+  created_at    DateTime @default(now()) @db.DateTime(0)
+  updated_at    DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([user_id, setting_key], map: "uk_user_setting")
+  @@index([user_id], map: "idx_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model users {
+  id                      Int                @id @default(autoincrement())
+  email                   String             @unique(map: "email") @db.VarChar(255)
+  password                String?            @db.VarChar(255)
+  name                    String             @db.VarChar(100)
+  avatar                  String?            @db.VarChar(500)
+  phone                   String?            @db.VarChar(20)
+  subscription            users_subscription @default(free)
+  subscription_expires_at DateTime?          @db.DateTime(0)
+  last_sync_at            DateTime?          @db.DateTime(0)
+  storage_used            BigInt             @default(0)
+  storage_limit           BigInt             @default(1073741824)
+  created_at              DateTime           @default(now()) @db.DateTime(0)
+  updated_at              DateTime           @default(now()) @db.DateTime(0)
+
+  @@index([created_at], map: "idx_created_at")
+  @@index([email], map: "idx_email")
+  @@index([subscription], map: "idx_subscription")
+}
+
+enum summary_snapshots_snapshot_type {
+  realtime
+  final
+}
+
+enum user_oauth_provider {
+  google
+  apple
+  wechat
+}
+
+enum todos_status {
+  pending
+  in_progress
+  completed
+  cancelled
+}
+
+enum todos_priority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum users_subscription {
+  free
+  pro
+}
+
+enum files_storage_type {
+  minio
+  s3
+}
+
+enum meetings_status {
+  recording
+  completed
+  archived
 }
