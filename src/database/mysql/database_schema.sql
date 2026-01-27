@@ -7,11 +7,11 @@
 -- ============================================
 
 -- 创建数据库
-CREATE DATABASE IF NOT EXISTS biji_db 
+CREATE DATABASE IF NOT EXISTS voice_ai 
 CHARACTER SET utf8mb4 
 COLLATE utf8mb4_unicode_ci;
 
-USE biji_db;
+USE voice_ai;
 
 -- ============================================
 -- 1. 用户表 (users)
@@ -30,14 +30,51 @@ CREATE TABLE IF NOT EXISTS users (
     last_sync_at DATETIME NULL COMMENT '最后同步时间（用于多端同步）',
     storage_used BIGINT NOT NULL DEFAULT 0 COMMENT '已使用存储空间（字节）',
     storage_limit BIGINT NOT NULL DEFAULT 1073741824 COMMENT '存储空间限制（字节，默认1GB，pro用户可扩展）',
-    settings JSON NOT NULL COMMENT '用户设置JSON：{"language":"zh-CN","theme":"auto","notifications":true}',
-    oauth JSON NULL COMMENT 'OAuth登录信息JSON：{"google":{"id":"xxx","email":"xxx"},"apple":{},"wechat":{}}',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX idx_email (email) COMMENT '邮箱索引（用于登录查询）',
     INDEX idx_subscription (subscription) COMMENT '订阅类型索引',
     INDEX idx_created_at (created_at) COMMENT '创建时间索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
+
+-- ============================================
+-- 1.1. 用户设置表 (user_settings)
+-- ============================================
+-- 功能：存储用户个性化设置
+-- 说明：替代原users.settings JSON字段，使用键值对存储
+CREATE TABLE IF NOT EXISTS user_settings (
+    id INT AUTO_INCREMENT PRIMARY KEY COMMENT '设置ID（主键）',
+    user_id INT NOT NULL COMMENT '用户ID（关联users.id，数据完整性由应用层保证）',
+    setting_key VARCHAR(100) NOT NULL COMMENT '设置键（如：language, theme, notifications）',
+    setting_value TEXT NULL COMMENT '设置值（JSON字符串或普通文本）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_user_setting (user_id, setting_key) COMMENT '唯一约束：同一用户的同一设置键只能有一条记录',
+    INDEX idx_user_id (user_id) COMMENT '用户ID索引（用于查询用户的所有设置）'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户设置表';
+
+-- ============================================
+-- 1.2. 用户OAuth登录表 (user_oauth)
+-- ============================================
+-- 功能：存储用户OAuth登录信息
+-- 说明：替代原users.oauth JSON字段，支持多个OAuth提供商
+CREATE TABLE IF NOT EXISTS user_oauth (
+    id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'OAuth ID（主键）',
+    user_id INT NOT NULL COMMENT '用户ID（关联users.id，数据完整性由应用层保证）',
+    provider ENUM('google', 'apple', 'wechat') NOT NULL COMMENT 'OAuth提供商：google-Google，apple-Apple，wechat-微信',
+    provider_user_id VARCHAR(255) NOT NULL COMMENT '提供商用户ID（在提供商系统中的唯一标识）',
+    provider_email VARCHAR(255) NULL COMMENT '提供商邮箱（从OAuth提供商获取）',
+    access_token VARCHAR(500) NULL COMMENT '访问令牌（加密存储）',
+    refresh_token VARCHAR(500) NULL COMMENT '刷新令牌（加密存储）',
+    expires_at DATETIME NULL COMMENT '令牌过期时间',
+    extra_data TEXT NULL COMMENT '额外数据（JSON字符串，存储其他提供商特定信息）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_provider_user (provider, provider_user_id) COMMENT '唯一约束：同一提供商的同一用户ID只能有一条记录',
+    UNIQUE KEY uk_user_provider (user_id, provider) COMMENT '唯一约束：同一用户同一提供商只能有一条记录',
+    INDEX idx_user_id (user_id) COMMENT '用户ID索引（用于查询用户的所有OAuth绑定）',
+    INDEX idx_provider_user_id (provider, provider_user_id) COMMENT '提供商用户ID索引（用于OAuth登录查询）'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户OAuth登录表';
 
 -- ============================================
 -- 2. 会议表 (meetings)
@@ -55,10 +92,6 @@ CREATE TABLE IF NOT EXISTS meetings (
     audio_url VARCHAR(500) NULL COMMENT '音频文件URL（存储在对象存储中）',
     audio_size BIGINT NULL COMMENT '音频文件大小（字节）',
     status ENUM('recording', 'completed', 'archived') NOT NULL DEFAULT 'completed' COMMENT '状态：recording-录制中，completed-已完成，archived-已归档',
-    summary JSON NULL COMMENT '会议总结JSON：{"keywords":[],"summary":"","todos":[],"actionItems":[],"decisions":[]}',
-    tags JSON NOT NULL DEFAULT '[]' COMMENT '标签列表（JSON数组，用于快速查询和展示）',
-    speakers JSON NULL COMMENT '发言人列表JSON：[{"id":"sp1","name":"张三","color":"#ff0000","avatar":""}]',
-    participants JSON NULL COMMENT '参与者列表JSON：[{"userId":"1","name":"张三","role":"主持人"}]',
     is_archived BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否已归档（归档后不显示在默认列表中）',
     is_shared BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否已分享（是否有分享链接）',
     share_token VARCHAR(100) NULL UNIQUE COMMENT '分享令牌（用于生成分享链接，唯一）',
@@ -71,6 +104,57 @@ CREATE TABLE IF NOT EXISTS meetings (
     INDEX idx_created_at (created_at) COMMENT '创建时间索引',
     INDEX idx_is_archived (is_archived) COMMENT '归档状态索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会议表';
+
+-- ============================================
+-- 2.1. 会议总结表 (meeting_summaries)
+-- ============================================
+-- 功能：存储会议总结的主信息
+-- 说明：替代原meetings.summary JSON字段
+CREATE TABLE IF NOT EXISTS meeting_summaries (
+    id INT AUTO_INCREMENT PRIMARY KEY COMMENT '总结ID（主键）',
+    meeting_id INT NOT NULL UNIQUE COMMENT '会议ID（关联meetings.id，一对一关系，数据完整性由应用层保证）',
+    summary_text TEXT NULL COMMENT '总结文本内容',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_meeting_id (meeting_id) COMMENT '会议ID索引（用于查询会议总结）'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会议总结表';
+
+-- ============================================
+-- 2.6. 会议发言人表 (meeting_speakers)
+-- ============================================
+-- 功能：存储会议的发言人信息
+-- 说明：替代原meetings.speakers JSON字段
+CREATE TABLE IF NOT EXISTS meeting_speakers (
+    id INT AUTO_INCREMENT PRIMARY KEY COMMENT '发言人ID（主键）',
+    meeting_id INT NOT NULL COMMENT '会议ID（关联meetings.id，数据完整性由应用层保证）',
+    speaker_id VARCHAR(50) NOT NULL COMMENT '发言人标识（在会议中的唯一ID，如sp1, sp2）',
+    name VARCHAR(100) NOT NULL COMMENT '发言人姓名',
+    color VARCHAR(20) NULL COMMENT '显示颜色（十六进制颜色码）',
+    avatar VARCHAR(500) NULL COMMENT '头像URL',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    UNIQUE KEY uk_meeting_speaker (meeting_id, speaker_id) COMMENT '唯一约束：同一会议的同一发言人标识只能有一条记录',
+    INDEX idx_meeting_id (meeting_id) COMMENT '会议ID索引（用于查询会议的所有发言人）',
+    INDEX idx_speaker_id (speaker_id) COMMENT '发言人标识索引（用于跨会议查询）'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会议发言人表';
+
+-- ============================================
+-- 2.7. 会议参与者表 (meeting_participants)
+-- ============================================
+-- 功能：存储会议的参与者信息
+-- 说明：替代原meetings.participants JSON字段
+CREATE TABLE IF NOT EXISTS meeting_participants (
+    id INT AUTO_INCREMENT PRIMARY KEY COMMENT '参与者ID（主键）',
+    meeting_id INT NOT NULL COMMENT '会议ID（关联meetings.id，数据完整性由应用层保证）',
+    user_id INT NULL COMMENT '用户ID（关联users.id，NULL表示外部参与者，数据完整性由应用层保证）',
+    name VARCHAR(100) NOT NULL COMMENT '参与者姓名',
+    role VARCHAR(50) NULL COMMENT '角色（如：主持人、参与者、记录员等）',
+    email VARCHAR(255) NULL COMMENT '邮箱（外部参与者）',
+    phone VARCHAR(20) NULL COMMENT '手机号（外部参与者）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    INDEX idx_meeting_id (meeting_id) COMMENT '会议ID索引（用于查询会议的所有参与者）',
+    INDEX idx_user_id (user_id) COMMENT '用户ID索引（用于查询用户参与的所有会议）',
+    INDEX idx_name (name) COMMENT '姓名索引（用于搜索）'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会议参与者表';
 
 -- ============================================
 -- 3. 转写内容表 (transcripts)
@@ -149,7 +233,7 @@ CREATE TABLE IF NOT EXISTS summary_snapshots (
     id INT AUTO_INCREMENT PRIMARY KEY COMMENT '快照ID（主键）',
     meeting_id INT NOT NULL COMMENT '会议ID（关联meetings.id，数据完整性由应用层保证）',
     snapshot_type ENUM('realtime', 'final') NOT NULL COMMENT '快照类型：realtime-实时快照，final-最终快照',
-    summary_data JSON NOT NULL COMMENT '总结数据JSON：{"keywords":[],"summary":"","todos":[],"actionItems":[],"decisions":[],"lastUpdated":"2024-01-01T00:00:00Z"}',
+    summary_text TEXT NULL COMMENT '总结文本内容',
     transcript_count INT NOT NULL COMMENT '转写条数（生成快照时的转写记录数）',
     transcript_length INT NOT NULL COMMENT '转写文本总长度（字符数）',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间（快照生成时间）',
@@ -254,7 +338,6 @@ CREATE TABLE IF NOT EXISTS todos (
     due_date DATETIME NULL COMMENT '截止日期（NULL表示无截止日期）',
     completed_at DATETIME NULL COMMENT '完成时间（NULL表示未完成）',
     assignee_id INT NULL COMMENT '分配给的用户ID（关联users.id，NULL表示分配给创建者自己，数据完整性由应用层保证）',
-    tags JSON NOT NULL DEFAULT '[]' COMMENT '标签列表（JSON数组，用于快速查询和展示）',
     reminder_at DATETIME NULL COMMENT '提醒时间（NULL表示不提醒）',
     is_archived BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否已归档（归档后不显示在默认列表中）',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -271,19 +354,40 @@ CREATE TABLE IF NOT EXISTS todos (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='待办表';
 
 -- ============================================
+-- 9.1. 待办标签关联表 (todo_tags)
+-- ============================================
+-- 功能：待办和标签的多对多关系表
+-- 说明：替代原todos.tags JSON字段，复用tags表
+CREATE TABLE IF NOT EXISTS todo_tags (
+    id INT AUTO_INCREMENT PRIMARY KEY COMMENT '关联ID（主键）',
+    todo_id INT NOT NULL COMMENT '待办ID（关联todos.id，数据完整性由应用层保证）',
+    tag_id INT NOT NULL COMMENT '标签ID（关联tags.id，数据完整性由应用层保证）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间（关联创建时间）',
+    UNIQUE KEY uk_todo_tag (todo_id, tag_id) COMMENT '唯一约束：同一待办不能重复关联同一标签（数据完整性由应用层保证，删除待办或标签时需要在应用层级联删除关联）',
+    INDEX idx_todo_id (todo_id) COMMENT '待办ID索引（用于查询待办的所有标签）',
+    INDEX idx_tag_id (tag_id) COMMENT '标签ID索引（用于查询标签关联的所有待办）'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='待办标签关联表';
+
+-- ============================================
 -- 数据库设计说明
 -- ============================================
 -- 
 -- 【表关系说明】
 -- 1. users (1) → (N) meetings: 一个用户可以有多个会议
--- 2. meetings (1) → (N) transcripts: 一个会议可以有多条转写记录
--- 3. meetings (1) → (N) summary_snapshots: 一个会议可以有多个总结快照
--- 4. users (1) → (N) tags: 一个用户可以创建多个标签
--- 5. meetings (N) ↔ (N) tags: 会议和标签是多对多关系（通过meeting_tags）
--- 6. users (1) → (N) files: 一个用户可以上传多个文件
--- 7. meetings (1) → (N) files: 一个会议可以关联多个文件
--- 8. meetings (1) → (N) shares: 一个会议可以有多个分享链接
--- 9. users (1) → (N) shares: 一个用户可以创建多个分享
+-- 2. users (1) → (N) user_settings: 一个用户可以有多个设置项
+-- 3. users (1) → (N) user_oauth: 一个用户可以绑定多个OAuth账号
+-- 4. meetings (1) → (1) meeting_summaries: 一个会议有一个总结（一对一）
+-- 5. meetings (1) → (N) meeting_speakers: 一个会议可以有多个发言人
+-- 6. meetings (1) → (N) meeting_participants: 一个会议可以有多个参与者
+-- 7. meetings (1) → (N) transcripts: 一个会议可以有多条转写记录
+-- 8. meetings (1) → (N) summary_snapshots: 一个会议可以有多个总结快照
+-- 9. users (1) → (N) tags: 一个用户可以创建多个标签
+-- 10. meetings (N) ↔ (N) tags: 会议和标签是多对多关系（通过meeting_tags）
+-- 11. todos (N) ↔ (N) tags: 待办和标签是多对多关系（通过todo_tags）
+-- 12. users (1) → (N) files: 一个用户可以上传多个文件
+-- 13. meetings (1) → (N) files: 一个会议可以关联多个文件
+-- 14. meetings (1) → (N) shares: 一个会议可以有多个分享链接
+-- 15. users (1) → (N) shares: 一个用户可以创建多个分享
 --
 -- 【索引说明】
 -- - 所有关联字段都创建了索引以提高查询性能
@@ -317,25 +421,42 @@ CREATE TABLE IF NOT EXISTS todos (
 -- 
 -- 删除用户时，必须按以下顺序删除：
 -- 1. 删除 shares（用户创建的分享）
--- 2. 删除 meeting_tags（通过meetings关联）
--- 3. 删除 tags（用户的标签）
--- 4. 删除 files（用户的文件）
--- 5. 删除 transcripts（通过meetings关联）
--- 6. 删除 summary_snapshots（通过meetings关联）
--- 7. 删除 meetings（用户的会议）
--- 8. 最后删除 users
+-- 2. 删除 todo_tags（通过todos关联）
+-- 3. 删除 todos（用户的待办）
+-- 4. 删除 meeting_tags（通过meetings关联）
+-- 5. 删除 tags（用户的标签）
+-- 6. 删除 files（用户的文件）
+-- 7. 删除 user_oauth（用户的OAuth绑定）
+-- 8. 删除 user_settings（用户的设置）
+-- 9. 删除 meeting_participants（通过meetings关联）
+-- 10. 删除 meeting_speakers（通过meetings关联）
+-- 11. 删除 meeting_summaries（通过meetings关联）
+-- 12. 删除 transcripts（通过meetings关联）
+-- 13. 删除 summary_snapshots（通过meetings关联）
+-- 14. 删除 meetings（用户的会议）
+-- 15. 最后删除 users
 --
 -- 删除会议时，必须按以下顺序删除：
 -- 1. 删除 shares（会议的分享）
 -- 2. 删除 meeting_tags（会议标签关联）
--- 3. 删除 transcripts（会议的转写）
--- 4. 删除 summary_snapshots（会议的总结快照）
--- 5. files.meeting_id 设为 NULL（保留文件记录）
--- 6. 最后删除 meetings
+-- 3. 删除 meeting_participants（会议的参与者）
+-- 4. 删除 meeting_speakers（会议的发言人）
+-- 5. 删除 meeting_summaries（会议总结）
+-- 6. 删除 transcripts（会议的转写）
+-- 7. 删除 summary_snapshots（会议的总结快照）
+-- 8. files.meeting_id 设为 NULL（保留文件记录）
+-- 9. 最后删除 meetings
 --
 -- 删除标签时，必须删除：
--- 1. meeting_tags（标签关联记录）
--- 2. 最后删除 tags
+-- 1. meeting_tags（会议标签关联记录）
+-- 2. todo_tags（待办标签关联记录）
+-- 3. 最后删除 tags
+
+-- 删除待办时，必须删除：
+-- 1. todo_tags（待办标签关联）
+-- 2. 最后删除 todos
+
+-- 删除总结快照时，直接删除 summary_snapshots 即可
 --
 -- 【数据完整性检查脚本】
 -- 
@@ -367,6 +488,37 @@ CREATE TABLE IF NOT EXISTS todos (
 --    LEFT JOIN meetings m ON s.meeting_id = m.id 
 --    LEFT JOIN users u ON s.user_id = u.id 
 --    WHERE m.id IS NULL OR u.id IS NULL;
+--
+-- 6. 检查孤儿用户设置记录：
+--    SELECT us.id FROM user_settings us 
+--    LEFT JOIN users u ON us.user_id = u.id 
+--    WHERE u.id IS NULL;
+--
+-- 7. 检查孤儿OAuth记录：
+--    SELECT uo.id FROM user_oauth uo 
+--    LEFT JOIN users u ON uo.user_id = u.id 
+--    WHERE u.id IS NULL;
+--
+-- 8. 检查孤儿会议总结记录：
+--    SELECT ms.id FROM meeting_summaries ms 
+--    LEFT JOIN meetings m ON ms.meeting_id = m.id 
+--    WHERE m.id IS NULL;
+--
+-- 9. 检查孤儿会议发言人记录：
+--    SELECT msp.id FROM meeting_speakers msp 
+--    LEFT JOIN meetings m ON msp.meeting_id = m.id 
+--    WHERE m.id IS NULL;
+--
+-- 10. 检查孤儿会议参与者记录：
+--    SELECT mp.id FROM meeting_participants mp 
+--    LEFT JOIN meetings m ON mp.meeting_id = m.id 
+--    WHERE m.id IS NULL;
+--
+-- 11. 检查孤儿待办标签关联：
+--    SELECT tt.id FROM todo_tags tt 
+--    LEFT JOIN todos t ON tt.todo_id = t.id 
+--    LEFT JOIN tags tg ON tt.tag_id = tg.id 
+--    WHERE t.id IS NULL OR tg.id IS NULL;
 --
 -- 【应用层数据验证示例】
 -- 
