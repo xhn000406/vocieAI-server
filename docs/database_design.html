@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI实时语音转写应用 - 数据库ER图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1em;
+        }
+
+        .controls {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .controls button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .controls button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .canvas-container {
+            position: relative;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            height: calc(100vh - 200px);
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: auto;
+            background: #f8f9fa;
+            background-image: 
+                linear-gradient(rgba(0,0,0,.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,.05) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        #svg-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .table-card {
+            position: absolute;
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            min-width: 280px;
+            max-width: 320px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            cursor: move;
+            z-index: 10;
+            transition: box-shadow 0.3s;
+        }
+
+        .table-card:hover {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        }
+
+        .table-card.dragging {
+            opacity: 0.8;
+            z-index: 100;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .table-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 15px;
+            border-radius: 6px 6px 0 0;
+            font-weight: bold;
+            font-size: 1.1em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .table-icon {
+            font-size: 1.2em;
+        }
+
+        .table-body {
+            padding: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .field {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 6px 8px;
+            border-bottom: 1px dotted #dee2e6;
+            font-size: 0.9em;
+            gap: 10px;
+        }
+
+        .field:last-child {
+            border-bottom: none;
+        }
+
+        .field-left {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .field-name {
+            color: #495057;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .field-comment {
+            color: #6c757d;
+            font-size: 0.85em;
+            margin-top: 2px;
+            font-style: italic;
+        }
+
+        .field-type {
+            color: #6c757d;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .field-key {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75em;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .pk {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .fk {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            font-size: 0.85em;
+        }
+
+        .legend-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+
+        .connection-point {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border: 2px solid white;
+            border-radius: 50%;
+            z-index: 20;
+            pointer-events: all;
+            cursor: crosshair;
+        }
+
+        .connection-point:hover {
+            background: #ff6b6b;
+            transform: scale(1.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🗄️ AI实时语音转写应用 - 数据库ER图</h1>
+        <p class="subtitle">可拖拽的交互式ER图 | 点击表卡片可拖动位置</p>
+    </div>
+
+    <div class="controls">
+        <button onclick="resetPositions()">重置位置</button>
+        <button onclick="autoLayout()">自动布局</button>
+        <button onclick="toggleConnections()">显示/隐藏连线</button>
+        <span style="margin-left: 20px; color: #666;">💡 提示：拖动表卡片可以调整位置，连线会自动更新</span>
+    </div>
+
+    <div class="canvas-container">
+        <div id="canvas">
+            <svg id="svg-lines"></svg>
+            
+            <!-- Users Table -->
+            <div class="table-card" id="table-users" style="left: 50px; top: 50px;">
+                <div class="table-header">
+                    <div class="table-name">
+                        <span class="table-icon">👤</span>
+                        <span>users</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                id <span class="field-key pk">PK</span>
+                            </div>
+                            <div class="field-comment">用户ID（主键）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">email</div>
+                            <div class="field-comment">邮箱（登录账号，唯一）</div>
+                        </div>
+                        <div class="field-type">VARCHAR(255)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">password</div>
+                            <div class="field-comment">密码（加密存储）</div>
+                        </div>
+                        <div class="field-type">VARCHAR(255)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">name</div>
+                            <div class="field-comment">用户姓名</div>
+                        </div>
+                        <div class="field-type">VARCHAR(100)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">avatar</div>
+                            <div class="field-comment">头像URL</div>
+                        </div>
+                        <div class="field-type">VARCHAR(500)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">phone</div>
+                            <div class="field-comment">手机号</div>
+                        </div>
+                        <div class="field-type">VARCHAR(20)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">subscription</div>
+                            <div class="field-comment">订阅类型（free/pro）</div>
+                        </div>
+                        <div class="field-type">ENUM</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">subscription_expires_at</div>
+                            <div class="field-comment">订阅过期时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">storage_used</div>
+                            <div class="field-comment">已使用存储（字节）</div>
+                        </div>
+                        <div class="field-type">BIGINT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">storage_limit</div>
+                            <div class="field-comment">存储限制（字节）</div>
+                        </div>
+                        <div class="field-type">BIGINT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">settings</div>
+                            <div class="field-comment">用户设置（JSON）</div>
+                        </div>
+                        <div class="field-type">JSON</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">oauth</div>
+                            <div class="field-comment">OAuth登录信息</div>
+                        </div>
+                        <div class="field-type">JSON</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">created_at</div>
+                            <div class="field-comment">创建时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">updated_at</div>
+                            <div class="field-comment">更新时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Meetings Table -->
+            <div class="table-card" id="table-meetings" style="left: 400px; top: 50px;">
+                <div class="table-header">
+                    <div class="table-name">
+                        <span class="table-icon">📅</span>
+                        <span>meetings</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                id <span class="field-key pk">PK</span>
+                            </div>
+                            <div class="field-comment">会议ID（主键）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                user_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">用户ID（外键→users.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">title</div>
+                            <div class="field-comment">会议标题</div>
+                        </div>
+                        <div class="field-type">VARCHAR(200)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">description</div>
+                            <div class="field-comment">会议描述</div>
+                        </div>
+                        <div class="field-type">TEXT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">duration</div>
+                            <div class="field-comment">会议时长（秒）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">start_time</div>
+                            <div class="field-comment">开始时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">end_time</div>
+                            <div class="field-comment">结束时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">audio_url</div>
+                            <div class="field-comment">音频文件URL</div>
+                        </div>
+                        <div class="field-type">VARCHAR(500)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">audio_size</div>
+                            <div class="field-comment">音频文件大小（字节）</div>
+                        </div>
+                        <div class="field-type">BIGINT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">status</div>
+                            <div class="field-comment">状态（recording/completed/archived）</div>
+                        </div>
+                        <div class="field-type">ENUM</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">summary</div>
+                            <div class="field-comment">会议总结（JSON）</div>
+                        </div>
+                        <div class="field-type">JSON</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">tags</div>
+                            <div class="field-comment">标签列表（JSON数组）</div>
+                        </div>
+                        <div class="field-type">JSON</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">speakers</div>
+                            <div class="field-comment">发言人列表（JSON）</div>
+                        </div>
+                        <div class="field-type">JSON</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">participants</div>
+                            <div class="field-comment">参与者列表（JSON）</div>
+                        </div>
+                        <div class="field-type">JSON</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">is_archived</div>
+                            <div class="field-comment">是否已归档</div>
+                        </div>
+                        <div class="field-type">BOOLEAN</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">is_shared</div>
+                            <div class="field-comment">是否已分享</div>
+                        </div>
+                        <div class="field-type">BOOLEAN</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">share_token</div>
+                            <div class="field-comment">分享令牌（唯一）</div>
+                        </div>
+                        <div class="field-type">VARCHAR(100)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">created_at</div>
+                            <div class="field-comment">创建时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">updated_at</div>
+                            <div class="field-comment">更新时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transcripts Table -->
+            <div class="table-card" id="table-transcripts" style="left: 750px; top: 50px;">
+                <div class="table-header">
+                    <div class="table-name">
+                        <span class="table-icon">📝</span>
+                        <span>transcripts</span>
+                        <span style="font-size: 0.7em; margin-left: 8px; opacity: 0.9;">⚠️ 大数据量表</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                id <span class="field-key pk">PK</span>
+                            </div>
+                            <div class="field-comment">转写ID（主键，BIGINT支持大量数据）</div>
+                        </div>
+                        <div class="field-type">BIGINT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                meeting_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">会议ID（外键→meetings.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">text</div>
+                            <div class="field-comment">转写文本内容（单条建议≤64KB）</div>
+                        </div>
+                        <div class="field-type">TEXT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">timestamp</div>
+                            <div class="field-comment">时间戳（秒，从会议开始算起）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">speaker_id</div>
+                            <div class="field-comment">发言人ID（多人识别）</div>
+                        </div>
+                        <div class="field-type">VARCHAR(50)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">speaker_name</div>
+                            <div class="field-comment">发言人姓名（冗余字段，避免JOIN）</div>
+                        </div>
+                        <div class="field-type">VARCHAR(100)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">is_highlighted</div>
+                            <div class="field-comment">是否高亮（用户标记）</div>
+                        </div>
+                        <div class="field-type">BOOLEAN</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">confidence</div>
+                            <div class="field-comment">识别置信度（0.00-1.00）</div>
+                        </div>
+                        <div class="field-type">DECIMAL(5,2)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">created_at</div>
+                            <div class="field-comment">创建时间（用于归档）</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div style="margin-top: 10px; padding: 8px; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px; font-size: 0.85em; color: #856404;">
+                        <strong>优化策略：</strong><br>
+                        • 复合索引：(meeting_id, timestamp)<br>
+                        • 压缩存储：ROW_FORMAT=COMPRESSED<br>
+                        • 定期归档：6个月前的数据迁移到归档表<br>
+                        • 批量插入：每次100-1000条
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transcripts Archive Table -->
+            <div class="table-card" id="table-transcripts_archive" style="left: 750px; top: 350px;">
+                <div class="table-header">
+                    <div class="table-name">
+                        <span class="table-icon">📦</span>
+                        <span>transcripts_archive</span>
+                        <span style="font-size: 0.7em; margin-left: 8px; opacity: 0.9;">归档表</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                id <span class="field-key pk">PK</span>
+                            </div>
+                            <div class="field-comment">转写ID（主键，BIGINT）</div>
+                        </div>
+                        <div class="field-type">BIGINT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                meeting_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">会议ID（外键→meetings.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">text</div>
+                            <div class="field-comment">转写文本内容</div>
+                        </div>
+                        <div class="field-type">TEXT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">timestamp</div>
+                            <div class="field-comment">时间戳（秒）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">speaker_id</div>
+                            <div class="field-comment">发言人ID</div>
+                        </div>
+                        <div class="field-type">VARCHAR(50)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">speaker_name</div>
+                            <div class="field-comment">发言人姓名</div>
+                        </div>
+                        <div class="field-type">VARCHAR(100)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">is_highlighted</div>
+                            <div class="field-comment">是否高亮</div>
+                        </div>
+                        <div class="field-type">BOOLEAN</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">confidence</div>
+                            <div class="field-comment">识别置信度</div>
+                        </div>
+                        <div class="field-type">DECIMAL(5,2)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">created_at</div>
+                            <div class="field-comment">原始创建时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">archived_at</div>
+                            <div class="field-comment">归档时间（分区字段）</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div style="margin-top: 10px; padding: 8px; background: #e7f3ff; border-left: 3px solid #4dabf7; border-radius: 4px; font-size: 0.85em; color: #1971c2;">
+                        <strong>归档说明：</strong><br>
+                        • 存储6个月前的转写数据<br>
+                        • 按月分区，便于管理<br>
+                        • 压缩存储，节省空间<br>
+                        • 定期清理12个月前的数据
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Snapshots Table -->
+            <div class="table-card" id="table-summary_snapshots" style="left: 1100px; top: 50px;">
+                <div class="table-header">
+                    <div class="table-name">
+                        <span class="table-icon">📊</span>
+                        <span>summary_snapshots</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                id <span class="field-key pk">PK</span>
+                            </div>
+                            <div class="field-comment">快照ID（主键）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                meeting_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">会议ID（外键→meetings.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">snapshot_type</div>
+                            <div class="field-comment">快照类型（realtime/final）</div>
+                        </div>
+                        <div class="field-type">ENUM</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">summary_data</div>
+                            <div class="field-comment">总结数据（JSON）</div>
+                        </div>
+                        <div class="field-type">JSON</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">transcript_count</div>
+                            <div class="field-comment">转写条数</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">transcript_length</div>
+                            <div class="field-comment">转写文本总长度</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">created_at</div>
+                            <div class="field-comment">创建时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tags Table -->
+            <div class="table-card" id="table-tags" style="left: 50px; top: 450px;">
+                <div class="table-header">
+                    <div class="table-name">
+                        <span class="table-icon">🏷️</span>
+                        <span>tags</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                id <span class="field-key pk">PK</span>
+                            </div>
+                            <div class="field-comment">标签ID（主键）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                user_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">用户ID（外键→users.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">name</div>
+                            <div class="field-comment">标签名称</div>
+                        </div>
+                        <div class="field-type">VARCHAR(50)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">color</div>
+                            <div class="field-comment">标签颜色</div>
+                        </div>
+                        <div class="field-type">VARCHAR(20)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">icon</div>
+                            <div class="field-comment">标签图标</div>
+                        </div>
+                        <div class="field-type">VARCHAR(50)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">usage_count</div>
+                            <div class="field-comment">使用次数</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">created_at</div>
+                            <div class="field-comment">创建时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">updated_at</div>
+                            <div class="field-comment">更新时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Meeting Tags Table -->
+            <div class="table-card" id="table-meeting_tags" style="left: 400px; top: 450px;">
+                <div class="table-header">
+                    <div class="table-name">
+                        <span class="table-icon">🔗</span>
+                        <span>meeting_tags</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                id <span class="field-key pk">PK</span>
+                            </div>
+                            <div class="field-comment">关联ID（主键）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                meeting_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">会议ID（外键→meetings.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                tag_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">标签ID（外键→tags.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">created_at</div>
+                            <div class="field-comment">创建时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Files Table -->
+            <div class="table-card" id="table-files" style="left: 750px; top: 450px;">
+                <div class="table-header">
+                    <div class="table-name">
+                        <span class="table-icon">📁</span>
+                        <span>files</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                id <span class="field-key pk">PK</span>
+                            </div>
+                            <div class="field-comment">文件ID（主键）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                user_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">用户ID（外键→users.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                meeting_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">会议ID（外键→meetings.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">filename</div>
+                            <div class="field-comment">文件名</div>
+                        </div>
+                        <div class="field-type">VARCHAR(255)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">original_name</div>
+                            <div class="field-comment">原始文件名</div>
+                        </div>
+                        <div class="field-type">VARCHAR(255)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">mime_type</div>
+                            <div class="field-comment">MIME类型</div>
+                        </div>
+                        <div class="field-type">VARCHAR(100)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">size</div>
+                            <div class="field-comment">文件大小（字节）</div>
+                        </div>
+                        <div class="field-type">BIGINT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">url</div>
+                            <div class="field-comment">文件访问URL</div>
+                        </div>
+                        <div class="field-type">VARCHAR(500)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">storage_type</div>
+                            <div class="field-comment">存储类型（minio/s3）</div>
+                        </div>
+                        <div class="field-type">ENUM</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">storage_key</div>
+                            <div class="field-comment">存储键（对象存储key）</div>
+                        </div>
+                        <div class="field-type">VARCHAR(500)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">is_public</div>
+                            <div class="field-comment">是否公开</div>
+                        </div>
+                        <div class="field-type">BOOLEAN</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">created_at</div>
+                            <div class="field-comment">创建时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shares Table -->
+            <div class="table-card" id="table-shares" style="left: 1100px; top: 450px;">
+                <div class="table-header">
+                    <div class="table-name">
+                        <span class="table-icon">🔗</span>
+                        <span>shares</span>
+                    </div>
+                </div>
+                <div class="table-body">
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                id <span class="field-key pk">PK</span>
+                            </div>
+                            <div class="field-comment">分享ID（主键）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                meeting_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">会议ID（外键→meetings.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">
+                                user_id <span class="field-key fk">FK</span>
+                            </div>
+                            <div class="field-comment">用户ID（外键→users.id）</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">token</div>
+                            <div class="field-comment">分享令牌（唯一）</div>
+                        </div>
+                        <div class="field-type">VARCHAR(100)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">password</div>
+                            <div class="field-comment">访问密码（加密）</div>
+                        </div>
+                        <div class="field-type">VARCHAR(255)</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">expires_at</div>
+                            <div class="field-comment">过期时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">access_count</div>
+                            <div class="field-comment">访问次数</div>
+                        </div>
+                        <div class="field-type">INT</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">is_active</div>
+                            <div class="field-comment">是否激活</div>
+                        </div>
+                        <div class="field-type">BOOLEAN</div>
+                    </div>
+                    <div class="field">
+                        <div class="field-left">
+                            <div class="field-name">created_at</div>
+                            <div class="field-comment">创建时间</div>
+                        </div>
+                        <div class="field-type">DATETIME</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-title">图例</div>
+            <div class="legend-item">
+                <span class="legend-color" style="background: #ff6b6b;"></span>
+                <span>主键 (PK)</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background: #4ecdc4;"></span>
+                <span>外键 (FK)</span>
+            </div>
+            <div class="legend-item">
+                <span style="color: #667eea;">━━━</span>
+                <span>一对多关系</span>
+            </div>
+            <div class="legend-item">
+                <span style="color: #ff9800;">━ ━ ━</span>
+                <span>归档关系</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 表关系定义
+        const relationships = [
+            { from: 'table-users', to: 'table-meetings', fromField: 'id', toField: 'user_id', type: '1:N' },
+            { from: 'table-meetings', to: 'table-transcripts', fromField: 'id', toField: 'meeting_id', type: '1:N', note: '⚠️ 大数据量' },
+            { from: 'table-transcripts', to: 'table-transcripts_archive', fromField: 'id', toField: 'id', type: '归档', note: '📦 6个月后' },
+            { from: 'table-meetings', to: 'table-transcripts_archive', fromField: 'id', toField: 'meeting_id', type: '1:N' },
+            { from: 'table-meetings', to: 'table-summary_snapshots', fromField: 'id', toField: 'meeting_id', type: '1:N' },
+            { from: 'table-users', to: 'table-tags', fromField: 'id', toField: 'user_id', type: '1:N' },
+            { from: 'table-meetings', to: 'table-meeting_tags', fromField: 'id', toField: 'meeting_id', type: '1:N' },
+            { from: 'table-tags', to: 'table-meeting_tags', fromField: 'id', toField: 'tag_id', type: '1:N' },
+            { from: 'table-users', to: 'table-files', fromField: 'id', toField: 'user_id', type: '1:N' },
+            { from: 'table-meetings', to: 'table-files', fromField: 'id', toField: 'meeting_id', type: '1:N' },
+            { from: 'table-meetings', to: 'table-shares', fromField: 'id', toField: 'meeting_id', type: '1:N' },
+            { from: 'table-users', to: 'table-shares', fromField: 'id', toField: 'user_id', type: '1:N' }
+        ];
+
+        let showConnections = true;
+        let draggedElement = null;
+        let offset = { x: 0, y: 0 };
+
+        // 初始化拖拽功能
+        function initDrag() {
+            const tables = document.querySelectorAll('.table-card');
+            tables.forEach(table => {
+                table.addEventListener('mousedown', startDrag);
+            });
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', endDrag);
+        }
+
+        function startDrag(e) {
+            if (e.target.closest('.table-header')) {
+                draggedElement = e.currentTarget;
+                const rect = draggedElement.getBoundingClientRect();
+                const canvasRect = document.getElementById('canvas').getBoundingClientRect();
+                offset.x = e.clientX - rect.left - canvasRect.left + document.getElementById('canvas').scrollLeft;
+                offset.y = e.clientY - rect.top - canvasRect.top + document.getElementById('canvas').scrollTop;
+                draggedElement.classList.add('dragging');
+                e.preventDefault();
+            }
+        }
+
+        function drag(e) {
+            if (draggedElement) {
+                const canvas = document.getElementById('canvas');
+                const canvasRect = canvas.getBoundingClientRect();
+                const x = e.clientX - canvasRect.left + canvas.scrollLeft - offset.x;
+                const y = e.clientY - canvasRect.top + canvas.scrollTop - offset.y;
+                
+                draggedElement.style.left = Math.max(0, x) + 'px';
+                draggedElement.style.top = Math.max(0, y) + 'px';
+                
+                updateConnections();
+            }
+        }
+
+        function endDrag() {
+            if (draggedElement) {
+                draggedElement.classList.remove('dragging');
+                draggedElement = null;
+            }
+        }
+
+        // 更新连接线
+        function updateConnections() {
+            if (!showConnections) {
+                document.getElementById('svg-lines').innerHTML = '';
+                return;
+            }
+
+            const svg = document.getElementById('svg-lines');
+            svg.innerHTML = '';
+
+            relationships.forEach(rel => {
+                const fromTable = document.getElementById(rel.from);
+                const toTable = document.getElementById(rel.to);
+                
+                if (!fromTable || !toTable) return;
+
+                const fromRect = fromTable.getBoundingClientRect();
+                const toRect = toTable.getBoundingClientRect();
+                const canvasRect = document.getElementById('canvas').getBoundingClientRect();
+                const scrollLeft = document.getElementById('canvas').scrollLeft;
+                const scrollTop = document.getElementById('canvas').scrollTop;
+
+                // 计算连接点位置（表的右侧和左侧中心）
+                const fromX = fromRect.right - canvasRect.left + scrollLeft;
+                const fromY = fromRect.top - canvasRect.top + scrollTop + fromRect.height / 2;
+                const toX = toRect.left - canvasRect.left + scrollLeft;
+                const toY = toRect.top - canvasRect.top + scrollTop + toRect.height / 2;
+
+                // 绘制连接线
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', fromX);
+                line.setAttribute('y1', fromY);
+                line.setAttribute('x2', toX);
+                line.setAttribute('y2', toY);
+                
+                // 归档关系使用不同的颜色和样式
+                if (rel.type === '归档') {
+                    line.setAttribute('stroke', '#ff9800');
+                    line.setAttribute('stroke-width', '2');
+                    line.setAttribute('stroke-dasharray', '5,5');
+                    line.style.opacity = '0.8';
+                } else {
+                    line.setAttribute('stroke', '#667eea');
+                    line.setAttribute('stroke-width', '2');
+                    line.setAttribute('marker-end', 'url(#arrowhead)');
+                    line.style.opacity = '0.6';
+                }
+                svg.appendChild(line);
+
+                // 添加关系标签
+                const midX = (fromX + toX) / 2;
+                const midY = (fromY + toY) / 2;
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', midX);
+                text.setAttribute('y', midY - 5);
+                text.setAttribute('fill', rel.type === '归档' ? '#ff9800' : '#667eea');
+                text.setAttribute('font-size', '12px');
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('font-weight', 'bold');
+                text.textContent = rel.type + (rel.note ? ' ' + rel.note : '');
+                svg.appendChild(text);
+            });
+
+            // 添加箭头标记定义
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            marker.setAttribute('id', 'arrowhead');
+            marker.setAttribute('markerWidth', '10');
+            marker.setAttribute('markerHeight', '10');
+            marker.setAttribute('refX', '9');
+            marker.setAttribute('refY', '3');
+            marker.setAttribute('orient', 'auto');
+            const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            polygon.setAttribute('points', '0 0, 10 3, 0 6');
+            polygon.setAttribute('fill', '#667eea');
+            marker.appendChild(polygon);
+            defs.appendChild(marker);
+            svg.appendChild(defs);
+        }
+
+        // 重置位置
+        function resetPositions() {
+            const positions = {
+                'table-users': { left: 50, top: 50 },
+                'table-meetings': { left: 400, top: 50 },
+                'table-transcripts': { left: 750, top: 50 },
+                'table-summary_snapshots': { left: 1100, top: 50 },
+                'table-tags': { left: 50, top: 450 },
+                'table-meeting_tags': { left: 400, top: 450 },
+                'table-transcripts_archive': { left: 750, top: 350 },
+                'table-files': { left: 1100, top: 450 },
+                'table-shares': { left: 1450, top: 450 }
+            };
+
+            Object.keys(positions).forEach(id => {
+                const table = document.getElementById(id);
+                if (table) {
+                    table.style.left = positions[id].left + 'px';
+                    table.style.top = positions[id].top + 'px';
+                }
+            });
+            updateConnections();
+        }
+
+        // 自动布局
+        function autoLayout() {
+            const layout = {
+                'table-users': { left: 50, top: 100 },
+                'table-meetings': { left: 400, top: 100 },
+                'table-transcripts': { left: 750, top: 100 },
+                'table-summary_snapshots': { left: 1100, top: 100 },
+                'table-tags': { left: 50, top: 500 },
+                'table-meeting_tags': { left: 400, top: 500 },
+                'table-transcripts_archive': { left: 750, top: 400 },
+                'table-files': { left: 1100, top: 500 },
+                'table-shares': { left: 1450, top: 500 }
+            };
+
+            Object.keys(layout).forEach(id => {
+                const table = document.getElementById(id);
+                if (table) {
+                    table.style.transition = 'all 0.5s ease';
+                    table.style.left = layout[id].left + 'px';
+                    table.style.top = layout[id].top + 'px';
+                    setTimeout(() => {
+                        table.style.transition = '';
+                    }, 500);
+                }
+            });
+            setTimeout(updateConnections, 500);
+        }
+
+        // 切换连接线显示
+        function toggleConnections() {
+            showConnections = !showConnections;
+            updateConnections();
+        }
+
+        // 监听窗口大小变化和滚动
+        window.addEventListener('resize', updateConnections);
+        document.getElementById('canvas').addEventListener('scroll', updateConnections);
+
+        // 初始化
+        initDrag();
+        updateConnections();
+
+        // 定期更新连接线（处理滚动等情况）
+        setInterval(updateConnections, 100);
+    </script>
+</body>
+</html>

@@ -1,8 +1,8 @@
 /**
- * 测试直接插入用户数据
+ * 测试直接插入用户数据（使用 Prisma）
  */
 import dotenv from 'dotenv';
-import mysql from 'mysql2/promise';
+import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { initLogger } from '../src/config/logger';
 
@@ -10,20 +10,10 @@ dotenv.config();
 const logger = initLogger();
 
 async function testInsert() {
-  const config = {
-    host: process.env.MYSQL_HOST || 'localhost',
-    port: parseInt(process.env.MYSQL_PORT || '3306'),
-    user: process.env.MYSQL_USER || 'root',
-    password: process.env.MYSQL_PASSWORD || '',
-    database: process.env.MYSQL_DATABASE || 'biji',
-  };
-
   try {
-    const connection = await mysql.createConnection(config);
-    
     logger.info('🔍 测试数据库连接...');
-    const [dbRows] = await connection.execute('SELECT DATABASE() as db') as any[];
-    logger.info('📊 当前数据库:', dbRows[0]?.db);
+    await prisma.$connect();
+    logger.info('✅ 数据库连接成功');
 
     // 测试插入
     const testEmail = `test_${Date.now()}@test.com`;
@@ -32,62 +22,57 @@ async function testInsert() {
     
     logger.info('📝 准备插入测试用户:', { email: testEmail, name: testName });
 
-    const [result] = await connection.execute(
-      `INSERT INTO users 
-       (email, password, name, subscription, storage_used, storage_limit, settings)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        testEmail,
-        testPassword,
-        testName,
-        'free',
-        0,
-        1073741824,
-        JSON.stringify({
-          language: 'zh-CN',
-          theme: 'auto',
-          notifications: true,
-        }),
-      ]
-    ) as any;
+    const newUser = await prisma.users.create({
+      data: {
+        email: testEmail,
+        password: testPassword,
+        name: testName,
+        subscription: 'free',
+        storage_used: BigInt(0),
+        storage_limit: BigInt(1073741824),
+      },
+    });
 
     logger.info('✅ INSERT 执行结果:', {
-      insertId: result.insertId,
-      affectedRows: result.affectedRows,
-      warningCount: result.warningCount,
+      id: newUser.id,
+      email: newUser.email,
+      name: newUser.name,
+      subscription: newUser.subscription,
     });
 
     // 立即查询验证
-    const [rows] = await connection.execute(
-      'SELECT * FROM users WHERE id = ?',
-      [result.insertId]
-    ) as any[];
+    const user = await prisma.users.findUnique({
+      where: { id: newUser.id },
+    });
 
-    if (rows.length > 0) {
+    if (user) {
       logger.info('✅ 查询到新插入的用户:', {
-        id: rows[0].id,
-        email: rows[0].email,
-        name: rows[0].name,
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        created_at: user.created_at,
       });
     } else {
       logger.error('❌ 无法查询到新插入的用户！');
     }
 
     // 统计总数
-    const [countRows] = await connection.execute(
-      'SELECT COUNT(*) as count FROM users'
-    ) as any[];
-    logger.info('📊 users 表中的总记录数:', countRows[0].count);
+    const count = await prisma.users.count();
+    logger.info('📊 users 表中的总记录数:', count);
 
-    await connection.end();
+    await prisma.$disconnect();
   } catch (error: any) {
     logger.error('❌ 测试插入时出错:', {
       message: error.message,
       code: error.code,
-      sqlState: error.sqlState,
-      sqlMessage: error.sqlMessage,
-      sql: error.sql,
+      meta: error.meta,
     });
+    
+    if (error.code === 'P2002') {
+      logger.error('💡 唯一约束冲突，可能是 email 已存在');
+    }
+    
+    await prisma.$disconnect().catch(() => {});
     process.exit(1);
   }
 }
